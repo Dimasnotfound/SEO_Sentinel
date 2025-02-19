@@ -1,3 +1,5 @@
+# seo_sentinel.py
+
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
@@ -6,9 +8,14 @@ from rich.table import Table
 from rich import box
 import time
 
+# Import fungsi generate_pdf_report dari file generate_pdf.py
+from generate_pdf import generate_pdf_report
+
 console = Console()
 
-# Validasi URL
+# ============================
+# Fungsi Validasi URL
+# ============================
 def is_valid_url(url):
     parsed = urlparse(url)
     return parsed.scheme in ['http', 'https'] and bool(parsed.netloc)
@@ -25,7 +32,6 @@ def get_valid_url():
         if not target_url:
             console.print("[red]URL tidak boleh kosong. Silahkan coba lagi.[/red]")
             continue
-        # Jika tidak ada scheme, tambahkan "http://"
         parsed = urlparse(target_url)
         if not parsed.scheme:
             target_url = "http://" + target_url
@@ -35,7 +41,9 @@ def get_valid_url():
         else:
             console.print("[red]URL tidak valid. Silahkan masukkan URL yang valid.[/red]")
 
-# Pendeteksian gambar yang missing alt
+# ============================
+# Fungsi Analisa SEO
+# ============================
 def check_missing_alts(soup):
     images = soup.find_all('img')
     missing = []
@@ -46,7 +54,6 @@ def check_missing_alts(soup):
             missing.append(src)
     return missing
 
-# Mengecek broken links (hanya internal links)
 def check_broken_links(links):
     broken = []
     for link in links:
@@ -59,14 +66,12 @@ def check_broken_links(links):
             broken.append(link)
     return broken
 
-# Mendapatkan meta description jika ada
 def get_meta_description(soup):
     meta_desc = soup.find("meta", attrs={"name": "description"})
     if meta_desc and meta_desc.get("content", "").strip():
         return meta_desc["content"].strip()
     return None
 
-# Menghasilkan rekomendasi optimasi SEO
 def generate_recommendations(data):
     recs = []
     # Meta description
@@ -92,10 +97,8 @@ def generate_recommendations(data):
     broken_links = data.get("broken_links", [])
     if broken_links:
         recs.append(f"Terdapat {len(broken_links)} broken link. Periksa dan perbaiki link-link yang tidak berfungsi.")
-    # Rekomendasi tambahan dapat ditambahkan sesuai kebutuhan
     return recs
 
-# Fungsi utama untuk crawling dan analisa SEO
 def crawl_seo(url):
     try:
         response = requests.get(url, timeout=10)
@@ -105,43 +108,36 @@ def crawl_seo(url):
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
-    
-    # Mengambil judul halaman
+    # Judul halaman
     title = soup.title.string.strip() if soup.title and soup.title.string else "Tidak ada judul"
     
-    # Mengambil meta tags
+    # Meta tags
     meta_tags = soup.find_all("meta")
     meta_data = []
     for tag in meta_tags:
         attrs = { key: value for key, value in tag.attrs.items() }
         meta_data.append(attrs)
     
-    # Mengambil headings (h1 hingga h6)
+    # Headings (h1 hingga h6)
     headings = {}
     for level in range(1, 7):
         tag = f"h{level}"
         headings[tag] = [h.get_text(strip=True) for h in soup.find_all(tag)]
     
-    # Mengambil internal links
+    # Internal links
     domain = urlparse(url).netloc
     internal_links = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
         parsed_href = urlparse(href)
-        # Link relatif atau dengan domain yang sama
         if parsed_href.netloc == "" or parsed_href.netloc == domain:
             full_url = urljoin(url, href)
             internal_links.append(full_url)
-    # Hilangkan duplikasi
     internal_links = list(set(internal_links))
     
-    # Pendeteksian gambar tanpa alt
+    # Error SEO: missing alt & broken links
     missing_alts = check_missing_alts(soup)
-    
-    # Cek broken links dari internal links
     broken_links = check_broken_links(internal_links)
-    
-    # Meta description
     meta_description = get_meta_description(soup)
     
     result = {
@@ -154,13 +150,12 @@ def crawl_seo(url):
         "broken_links": broken_links,
         "meta_description": meta_description,
     }
-    
-    # Tambahkan rekomendasi optimasi
     result["recommendations"] = generate_recommendations(result)
-    
     return result
 
-# Menampilkan data SEO beserta error dan rekomendasi di terminal
+# ============================
+# Tampilan Data di Terminal
+# ============================
 def display_seo_data(data):
     console.print("\n[bold magenta]Laporan SEO Website[/bold magenta]\n", justify="center")
     console.print(f"[bold green]URL:[/bold green] {data['url']}")
@@ -178,12 +173,12 @@ def display_seo_data(data):
     # Tabel Headings per level (h1 - h6)
     for level in range(1, 7):
         tag = f"h{level}"
-        headings = data["headings"].get(tag, [])
-        if headings:
-            heading_table = Table(title=f"{tag.upper()} (Total: {len(headings)})", box=box.SIMPLE)
+        headings_list = data["headings"].get(tag, [])
+        if headings_list:
+            heading_table = Table(title=f"{tag.upper()} (Total: {len(headings_list)})", box=box.SIMPLE)
             heading_table.add_column("No", justify="center", style="cyan", width=4)
             heading_table.add_column("Teks", style="white")
-            for i, text in enumerate(headings, start=1):
+            for i, text in enumerate(headings_list, start=1):
                 heading_table.add_row(str(i), text)
             console.print(heading_table)
     
@@ -195,7 +190,7 @@ def display_seo_data(data):
         links_table.add_row(str(i), link)
     console.print(links_table)
     
-    # Tabel Error SEO: Missing Alt pada gambar
+    # Tabel gambar tanpa alt
     if data["missing_alts"]:
         alt_table = Table(title=f"Gambar tanpa Alt (Total: {len(data['missing_alts'])})", box=box.SIMPLE)
         alt_table.add_column("No", justify="center", style="cyan", width=4)
@@ -204,7 +199,7 @@ def display_seo_data(data):
             alt_table.add_row(str(i), src)
         console.print(alt_table)
     
-    # Tabel Broken Links
+    # Tabel broken links
     if data["broken_links"]:
         broken_table = Table(title=f"Broken Links (Total: {len(data['broken_links'])})", box=box.SIMPLE)
         broken_table.add_column("No", justify="center", style="cyan", width=4)
@@ -213,13 +208,15 @@ def display_seo_data(data):
             broken_table.add_row(str(i), link)
         console.print(broken_table)
     
-    # Tampilkan rekomendasi optimasi
+    # Rekomendasi optimasi
     if data.get("recommendations"):
         console.print("\n[bold blue]Rekomendasi Optimasi:[/bold blue]")
         for rec in data["recommendations"]:
             console.print(f"- {rec}")
 
-# Fungsi monitoring berkala untuk memeriksa perubahan SEO
+# ============================
+# Fungsi Monitoring Berkala
+# ============================
 def monitor_website(url, interval=300):
     console.print(f"\n[bold cyan]Monitoring dimulai untuk {url}.[/bold cyan]")
     console.print(f"Memeriksa perubahan setiap {interval} detik...\n")
@@ -246,18 +243,31 @@ def monitor_website(url, interval=300):
             console.print("[bold yellow]Perubahan terdeteksi:[/bold yellow]")
             for change in changes:
                 console.print(f"- {change}")
-            # Update data sebelumnya dengan data baru
             previous_data = new_data
         else:
             console.print("[green]Tidak ada perubahan signifikan.[/green]")
 
+# ============================
+# Main Program
+# ============================
 if __name__ == "__main__":
     target_url = get_valid_url()
-    data = crawl_seo(target_url)
+    
+    # Animasi loading saat analisa SEO
+    with console.status("[bold green]Melakukan analisa SEO...[/bold green]", spinner="dots"):
+        data = crawl_seo(target_url)
+    
     if data:
         display_seo_data(data)
+        
+        # Pilihan untuk membuat PDF report
+        console.print("\n[bold magenta]Apakah Anda ingin membuat PDF report?[/bold magenta]")
+        pdf_choice = input("Ketik 'y' untuk ya atau tekan Enter untuk melewati: ").strip().lower()
+        if pdf_choice == "y":
+            generate_pdf_report(data)
+        
+        # Pilihan untuk mengaktifkan monitoring berkala
         console.print("\n[bold magenta]Apakah Anda ingin mengaktifkan fitur monitoring berkala?[/bold magenta]")
-        choice = input("Ketik 'y' untuk ya atau tekan Enter untuk keluar: ").strip().lower()
-        if choice == "y":
-            # Misalnya monitoring setiap 5 menit (300 detik)
+        monitor_choice = input("Ketik 'y' untuk ya atau tekan Enter untuk keluar: ").strip().lower()
+        if monitor_choice == "y":
             monitor_website(target_url, interval=300)
