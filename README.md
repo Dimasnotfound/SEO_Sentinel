@@ -45,7 +45,7 @@ Proyek ini dilisensikan di bawah MIT License.
 
 ## Kontak
 
-Jika ada pertanyaan atau saran, silakan hubungi saya melalui email: your.email@example.com.
+Jika ada pertanyaan atau saran, silakan hubungi saya melalui email: dimaaspratama0@gmail.com
 
 ---
 
